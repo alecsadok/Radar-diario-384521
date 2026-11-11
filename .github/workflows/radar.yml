@@ -1,0 +1,51 @@
+name: Radar diario 384521
+
+on:
+  schedule:
+    # 02:00 UTC = 23:00 en Argentina (GMT-3). GitHub usa siempre UTC.
+    - cron: "0 2 * * *"
+  workflow_dispatch:        # permite ejecutarlo a mano desde la pestaña Actions
+
+permissions:
+  contents: write           # necesario para guardar los informes en el repo
+
+concurrency:
+  group: radar-diario
+  cancel-in-progress: false
+
+jobs:
+  generar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Prueba offline (verifica que el código sigue sano)
+        run: python tests/test_offline.py > /dev/null
+
+      - name: Generar informe
+        env:
+          TZ: America/Argentina/Buenos_Aires
+        run: python radar.py
+
+      - name: Guardar informes en el repositorio
+        if: always()
+        run: |
+          git config user.name "bot-384521"
+          git config user.email "bot-384521@users.noreply.github.com"
+          git add informes estado
+          if git diff --cached --quiet; then
+            echo "Sin cambios para guardar"
+          else
+            git commit -m "Informe $(TZ=America/Argentina/Buenos_Aires date +%d/%m/%Y)"
+            git pull --rebase origin "${GITHUB_REF_NAME}" || true
+            git push
+          fi
